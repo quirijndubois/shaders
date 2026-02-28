@@ -11,8 +11,8 @@ void main() {
 }`;
 
 const shaders = {
-	raymarch: 'shaders/raymarch.frag',
 	mandelbrot: 'shaders/mandelbrot.frag',
+	raymarch: 'shaders/raymarch.frag',
 };
 
 const dropdown = document.getElementById('shaderSelect');
@@ -72,30 +72,76 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// Mouse tracking
 let mouse = [0, 0];
 let globalMouse = [0, 0];
 let zoom = 1.0;
 let camera = [0, 0];
+
+// Dragging state
+let isDragging = false;
+let lastMouse = [0, 0];
+
+// Mouse move + dragging
 window.addEventListener('mousemove', (e) => {
-	mouse = [e.clientX / window.innerWidth * 2 - 1, e.clientY / window.innerHeight * -2 + 1];
-	globalMouse = [mouse[0] * zoom + camera[0], mouse[1] * zoom + camera[1]];
+
+	// ---- Camera dragging ----
+	if (isDragging) {
+		const dx = lastMouse[0] - e.clientX;
+		const dy = lastMouse[1] - e.clientY;
+
+		const aspect = window.innerHeight / window.innerWidth;
+
+		camera[0] -= (dx / window.innerWidth) * 2 * zoom;
+		camera[1] += (dy / window.innerHeight) * 2 * zoom * aspect;
+
+		lastMouse = [e.clientX, e.clientY];
+	}
+
+	mouse = [
+		e.clientX / window.innerWidth * 2 - 1,
+		e.clientY / window.innerHeight * -2 + 1
+	];
+
+	mouse[1] *= window.innerHeight / window.innerWidth;
+
+	globalMouse = [
+		mouse[0] * zoom + camera[0],
+		mouse[1] * zoom + camera[1]
+	];
 });
 
-// Zoom tracking
+window.addEventListener('mousedown', (e) => {
+	isDragging = true;
+	lastMouse = [e.clientX, e.clientY];
+});
+
+window.addEventListener('mouseup', () => {
+	isDragging = false;
+});
+
+window.addEventListener('mouseleave', () => {
+	isDragging = false;
+});
+
 window.addEventListener('wheel', (e) => {
 	e.preventDefault();
+
 	const delta = e.deltaY / 500;
 	zoom *= 1 + delta;
 
-	iterations = Math.log(zoom) * 50 + 100; // Increase iterations as we zoom in
+	iterations = Math.log(zoom) * 50 + 100;
 
-	globalMouse = [mouse[0] * zoom + camera[0], mouse[1] * zoom + camera[1]];
+	globalMouse = [
+		mouse[0] * zoom + camera[0],
+		mouse[1] * zoom + camera[1]
+	];
+
 	camera[0] = lerp(camera[0], globalMouse[0], delta);
 	camera[1] = lerp(camera[1], globalMouse[1], delta);
+
 }, { passive: false });
 
-// Main render
+
 async function main() {
 	const fragmentShaderSrc = await loadShader(dropdown.value);
 
@@ -122,15 +168,16 @@ async function main() {
 		gl.uniform2f(u_mouse, mouse[0], mouse[1]);
 		gl.uniform1f(u_zoom, zoom);
 		gl.uniform2f(u_camera, camera[0], camera[1]);
+
 		let time = (performance.now() - t0) / 1000;
 		gl.uniform1f(u_time, time);
 
 		gl.drawArrays(gl.TRIANGLES, 0, 6);
 		requestAnimationFrame(render);
 	}
+
 	render();
 }
 
 main();
 dropdown.addEventListener('change', main);
-
