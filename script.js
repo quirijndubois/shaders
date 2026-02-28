@@ -191,9 +191,6 @@ canvas.addEventListener('touchmove', (e) => {
 				mouse[0] * zoom + camera[0],
 				mouse[1] * zoom + camera[1]
 			];
-
-			camera[0] = lerp(camera[0], globalMouse[0], delta);
-			camera[1] = lerp(camera[1], globalMouse[1], delta);
 		}
 
 		lastPinchDistance = newDist;
