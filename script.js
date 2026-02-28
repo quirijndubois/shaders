@@ -23,7 +23,6 @@ for (const key in shaders) {
 	dropdown.appendChild(option);
 }
 
-// Load fragment shader from external file
 async function loadShader(url) {
 	const res = await fetch(url);
 	return await res.text();
@@ -55,7 +54,6 @@ function createProgram(vs, fs) {
 	return program;
 }
 
-// Create buffer for fullscreen quad
 const positionBuffer = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
@@ -63,7 +61,6 @@ gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
 	-1, 1, 1, -1, 1, 1
 ]), gl.STATIC_DRAW);
 
-// Resize canvas
 function resizeCanvas() {
 	canvas.width = window.innerWidth;
 	canvas.height = window.innerHeight;
@@ -77,14 +74,33 @@ let globalMouse = [0, 0];
 let zoom = 1.0;
 let camera = [0, 0];
 
-// Dragging state
+// Dragging
 let isDragging = false;
 let lastMouse = [0, 0];
 
-// Mouse move + dragging
+// Touch state
+let isTouchDragging = false;
+let lastTouch = [0, 0];
+let lastPinchDistance = null;
+
+// ---------- Shared pointer update ----------
+function updateMouse(x, y) {
+	mouse = [
+		x / window.innerWidth * 2 - 1,
+		y / window.innerHeight * -2 + 1
+	];
+
+	mouse[1] *= window.innerHeight / window.innerWidth;
+
+	globalMouse = [
+		mouse[0] * zoom + camera[0],
+		mouse[1] * zoom + camera[1]
+	];
+}
+
+// ---------- Mouse Controls ----------
 window.addEventListener('mousemove', (e) => {
 
-	// ---- Camera dragging ----
 	if (isDragging) {
 		const dx = lastMouse[0] - e.clientX;
 		const dy = lastMouse[1] - e.clientY;
@@ -97,17 +113,7 @@ window.addEventListener('mousemove', (e) => {
 		lastMouse = [e.clientX, e.clientY];
 	}
 
-	mouse = [
-		e.clientX / window.innerWidth * 2 - 1,
-		e.clientY / window.innerHeight * -2 + 1
-	];
-
-	mouse[1] *= window.innerHeight / window.innerWidth;
-
-	globalMouse = [
-		mouse[0] * zoom + camera[0],
-		mouse[1] * zoom + camera[1]
-	];
+	updateMouse(e.clientX, e.clientY);
 });
 
 window.addEventListener('mousedown', (e) => {
@@ -115,21 +121,14 @@ window.addEventListener('mousedown', (e) => {
 	lastMouse = [e.clientX, e.clientY];
 });
 
-window.addEventListener('mouseup', () => {
-	isDragging = false;
-});
-
-window.addEventListener('mouseleave', () => {
-	isDragging = false;
-});
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mouseleave', () => isDragging = false);
 
 window.addEventListener('wheel', (e) => {
 	e.preventDefault();
 
 	const delta = e.deltaY / 500;
 	zoom *= 1 + delta;
-
-	iterations = Math.log(zoom) * 50 + 100;
 
 	globalMouse = [
 		mouse[0] * zoom + camera[0],
@@ -142,6 +141,77 @@ window.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 
+// ---------- TOUCH CONTROLS ----------
+
+canvas.addEventListener('touchstart', (e) => {
+	e.preventDefault();
+
+	if (e.touches.length === 1) {
+		const t = e.touches[0];
+		isTouchDragging = true;
+		lastTouch = [t.clientX, t.clientY];
+		updateMouse(t.clientX, t.clientY);
+	}
+
+	// pinch start
+	if (e.touches.length === 2) {
+		lastPinchDistance = getTouchDistance(e.touches);
+	}
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+	e.preventDefault();
+
+	// ----- Single finger drag -----
+	if (e.touches.length === 1 && isTouchDragging) {
+		const t = e.touches[0];
+
+		const dx = lastTouch[0] - t.clientX;
+		const dy = lastTouch[1] - t.clientY;
+
+		const aspect = window.innerHeight / window.innerWidth;
+
+		camera[0] -= (dx / window.innerWidth) * 2 * zoom;
+		camera[1] += (dy / window.innerHeight) * 2 * zoom * aspect;
+
+		lastTouch = [t.clientX, t.clientY];
+		updateMouse(t.clientX, t.clientY);
+	}
+
+	// ----- Pinch zoom -----
+	if (e.touches.length === 2) {
+		const newDist = getTouchDistance(e.touches);
+
+		if (lastPinchDistance !== null) {
+			const delta = (lastPinchDistance - newDist) / 300;
+
+			zoom *= 1 + delta;
+
+			globalMouse = [
+				mouse[0] * zoom + camera[0],
+				mouse[1] * zoom + camera[1]
+			];
+
+			camera[0] = lerp(camera[0], globalMouse[0], delta);
+			camera[1] = lerp(camera[1], globalMouse[1], delta);
+		}
+
+		lastPinchDistance = newDist;
+	}
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => {
+	isTouchDragging = false;
+	lastPinchDistance = null;
+});
+
+function getTouchDistance(touches) {
+	const dx = touches[0].clientX - touches[1].clientX;
+	const dy = touches[0].clientY - touches[1].clientY;
+	return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ---------- WebGL Main ----------
 async function main() {
 	const fragmentShaderSrc = await loadShader(dropdown.value);
 
