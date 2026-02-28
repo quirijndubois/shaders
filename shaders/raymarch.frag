@@ -148,8 +148,10 @@ vec3 spherical_coordinates(float phi, float theta, float radius) {
 
 void main() {
     vec2 uv = (gl_FragCoord.xy / u_resolution.x) * 2.0 - 1.0;
-	vec3 camera_position = spherical_coordinates(u_mouse.x * 3.1415, -u_mouse.y * 3.1415, 2.0);
-	vec3 camera_direction = normalize(vec3(0.0) - camera_position); // Look at the origin
+	// vec3 camera_position = spherical_coordinates(u_mouse.x * 3.1415, -u_mouse.y * 3.1415, 2.0);
+	vec3 camera_position = spherical_coordinates(-u_time * 0.3, 0.5, 1.5);
+	
+	vec3 camera_direction = normalize(vec3(0.0) - camera_position);
 	
 	vec3 sun_direction = spherical_coordinates(u_time * 0.5, 0.8, 1.0); // Sun moves over time
 
