@@ -25,7 +25,10 @@ vec4 find_mandelbrot(vec2 c) {
 }
 
 void main() {
-    vec2 uv = (gl_FragCoord.xy / u_resolution.x) * 2.0 - 1.0;
+    vec2 uv = vec2(
+		    gl_FragCoord.x / u_resolution.x * 2.0 - 1.0,
+		    (gl_FragCoord.y / u_resolution.y * 2.0 - 1.0) * (u_resolution.y / u_resolution.x)
+	);
 
     vec2 mouse_uv = u_mouse;
 
