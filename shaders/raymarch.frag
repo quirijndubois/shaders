@@ -203,6 +203,7 @@ vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
 
 	reflective_lighting *= (1.0 - first_march.roughness);
 	direct_lighting *= first_march.roughness;
+	indirect_lighting *= first_march.roughness;
 
 
 	vec3 color = vec3(0.0);
