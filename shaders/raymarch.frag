@@ -101,11 +101,11 @@ SDF scene_sdf(vec3 p) {
 
 	if (d == d1) { // blue sphere
 		result.roughness = 1.0;
-		result.color = vec3(0.2, 0.2, 0.8);
+		result.color = vec3(0.2, 0.2, 1.0);
 	}
 	else if (d == d2) { // red sphere
 		result.roughness = 0.9;
-		result.color = vec3(0.8, 0.2, 0.4);
+		result.color = vec3(1.0, 0.2, 0.2);
 	}
 	else if (d == d3) { //cube
 		result.roughness = 0.2;
