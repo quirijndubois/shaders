@@ -1,5 +1,5 @@
 #ifdef GL_ES
-precision highp float;
+precision mediump float;
 #endif
 
 uniform vec2 u_resolution;
@@ -7,6 +7,12 @@ uniform vec2 u_mouse;
 uniform float u_time;
 uniform vec2 u_camera;
 uniform float u_zoom;
+
+const int INDIRECT_LIGHTING_ITERATIONS = 10;
+const int MAX_RAY_MARCH_ITERATIONS = 100;
+const float MAX_RAY_MARCH_DISTANCE = 100.0;
+const float RAY_MARCH_EPSILON = 0.01;
+const float AMBIENT_LIGHTING = 0.2;
 
 struct SDF {
 	float distance;
@@ -136,19 +142,17 @@ vec3 normal(vec3 p) {
 
 SDF ray_march(vec3 ro, vec3 rd) {
 	float t = 0.0;
-	const float max_distance = 100.0;
-	const float epsilon = 0.001;
 	SDF sdf_result;
-	for (int i = 0; i < 100; i++) {
+	for (int i = 0; i < MAX_RAY_MARCH_ITERATIONS; i++) {
 		vec3 p = ro + rd * t;
 		SDF sdf_result = scene_sdf(p);
 		float d = sdf_result.distance;
-		if (d < epsilon) {
+		if (d < RAY_MARCH_EPSILON) {
 			sdf_result.hit = true;
 			return sdf_result;
 			}
 		t += d;
-		if (t > max_distance){
+		if (t > MAX_RAY_MARCH_DISTANCE){
 			sdf_result.hit = false;
 		break;
 		}
@@ -174,7 +178,7 @@ vec3 reflect_dir(vec3 I, vec3 N) {
 vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
 	SDF first_march = ray_march(ro, rd);
 	vec3 p = first_march.position;
-	if (first_march.hit == false) return vec3(0.0);
+	if (first_march.hit == false) return vec3(AMBIENT_LIGHTING);
 
 	// Calculate reflections
 	vec3 reflective_lighting = vec3(0.0);
@@ -184,21 +188,29 @@ vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
 	if (reflected_march.hit) {
 		reflective_lighting = get_lighting(reflected_march, sun_dir);
 	}
+	else {
+		reflective_lighting = vec3(AMBIENT_LIGHTING);
+	}
 
 	// calculte indirect lighting
 	vec3 indirect_lighting = vec3(0.0);
-	const int ITERATIONS = 50;
-	for (int i = 0; i < ITERATIONS; i++) {
+	for (int i = 0; i < INDIRECT_LIGHTING_ITERATIONS; i++) {
 		vec2 seed = gl_FragCoord.xy + vec2(float(i)*13.37, float(u_time)*17.29);
 		vec3 indirect_dir = randomHemisphereDirection(n, seed);
 		SDF indirect_lighting_march = ray_march(p + n * 0.01, indirect_dir);
 		if (indirect_lighting_march.hit) {
-			indirect_lighting += get_lighting(indirect_lighting_march, sun_dir) * first_march.color / float(ITERATIONS);
+			indirect_lighting += get_lighting(indirect_lighting_march, sun_dir) * first_march.color / float(INDIRECT_LIGHTING_ITERATIONS);
+		}
+		else{
+			indirect_lighting += AMBIENT_LIGHTING / float(INDIRECT_LIGHTING_ITERATIONS) * first_march.color;
 		}
 	}
 
 	// calculate direct lighting
 	vec3 direct_lighting = get_lighting(first_march, sun_dir);
+	// if (direct_lighting == vec3(0.0)){
+	// 	direct_lighting = vec3(AMBIENT_LIGHTING);
+	// }
 
 
 	reflective_lighting *= (1.0 - first_march.roughness);
