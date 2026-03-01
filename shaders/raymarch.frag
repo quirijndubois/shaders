@@ -10,9 +10,9 @@ uniform float u_zoom;
 
 const int INDIRECT_LIGHTING_ITERATIONS = 10;
 const int MAX_RAY_MARCH_ITERATIONS = 100;
-const float MAX_RAY_MARCH_DISTANCE = 100.0;
+const float MAX_RAY_MARCH_DISTANCE = 10.0;
 const float RAY_MARCH_EPSILON = 0.01;
-const float AMBIENT_LIGHTING = 0.2;
+const float AMBIENT_LIGHTING = 0.3;
 
 struct SDF {
 	float distance;
