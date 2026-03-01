@@ -5,14 +5,54 @@ precision highp float;
 uniform vec2 u_resolution;
 uniform vec2 u_mouse;
 uniform float u_time;
+uniform vec2 u_camera;
+uniform float u_zoom;
 
 struct SDF {
-    float distance;
+	float distance;
 	vec3 position;
 	bool hit;
-    vec3 color;
-    float roughness;
+	vec3 color;
+	float roughness;
 };
+
+// Float-based hash to generate a float in [0,1)
+float rand(in vec2 co) {
+    highp float a = 12.9898;
+    highp float b = 78.233;
+    highp float c = 43758.5453;
+    highp float dt = dot(co, vec2(a, b));
+    highp float sn = mod(dt, 3.14159265);
+    return fract(sin(sn) * c);
+}
+
+// 2D random vector
+vec2 rand2(in vec2 co) {
+    return vec2(rand(co), rand(co + vec2(5.23, 1.37)));
+}
+
+
+// Cosine-weighted hemisphere sampling
+vec3 randomHemisphereDirection(vec3 normal, vec2 seed) {
+    vec2 u = rand2(seed);
+    float u1 = u.x;
+    float u2 = u.y;
+
+    // Cosine-weighted polar coordinates
+    float r = sqrt(u1);
+    float theta = 2.0 * 3.14159265 * u2;
+
+    float x = r * cos(theta);
+    float y = r * sin(theta);
+    float z = sqrt(1.0 - u1);
+
+    // Create tangent space basis
+    vec3 tangent = normalize(abs(normal.x) > 0.1 ? cross(normal, vec3(0,1,0)) : cross(normal, vec3(1,0,0)));
+    vec3 bitangent = cross(normal, tangent);
+
+    // Transform from tangent space to world space
+    return normalize(x * tangent + y * bitangent + z * normal);
+}
 
 float sdf_circle(vec3 p, float r) {
 	return length(p) - r;
@@ -33,15 +73,14 @@ float smooth_union(float d1, float d2, float k) {
 }
 
 SDF scene_sdf(vec3 p) {
-	float smoothing = 0.1;
 	float d1 = sdf_circle(p - vec3(0.5, 0.25, 0.5), 0.25);
 	float d2 = sdf_circle(p - vec3(-0.5, 0.5, -0.5), 0.5);
 	float d3 = sdf_box(p - vec3(0.3, 0.0, 0.0), vec3(0.4, 0.3, 0.2));
 	float d4 = sdf_floor(p);
 
-	float d = smooth_union(d1, d2, smoothing);
-	d = smooth_union(d, d3, smoothing);
-	d = smooth_union(d, d4, smoothing);
+	float d = min(d1, d2);
+	d = min(d, d3);
+	d = min(d, d4);
 	SDF result;
 	result.distance = d;
 	result.position = p;
@@ -62,6 +101,29 @@ SDF scene_sdf(vec3 p) {
 	}
 	return result;
 }
+
+// SDF scene_sdf(vec3 p) {
+// 	float circle_d = sdf_circle(p - vec3(0.0, 0.25, 0.0), 0.25);
+// 	float floor_d = sdf_floor(p);
+// 	float d = min(circle_d, floor_d);
+//
+// 	SDF result;
+// 	result.distance = d;
+// 	result.position = p;
+// 	if (floor_d > circle_d){
+// 		result.color = vec3(1.0, 0.0, 0.0);
+// 		result.roughness = 0.9;
+// 	}
+// 	else {
+// 		result.color = vec3(1.0);
+// 		result.roughness = 0.9;
+// 	}
+//
+//
+// 	return result;
+// }
+
+
 
 vec3 normal(vec3 p) {
 	const float h = 0.001;
@@ -99,9 +161,9 @@ vec3 get_lighting(SDF sdf, vec3 sun_dir) {
 	vec3 p = sdf.position;
 	vec3 n = normal(p);
 	SDF sun_path = ray_march(p + n * 0.01, sun_dir);
-	if (length(sun_path.position) > 0.0) return vec3(0.0);
+	if (sun_path.hit) return vec3(0.0);
 
-	float light = max(dot(n, sun_dir), 0.3);
+	float light = max(dot(n, sun_dir), 0.0);
 	return light * sdf.color;
 }
 
@@ -123,13 +185,31 @@ vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
 		reflective_lighting = get_lighting(reflected_march, sun_dir);
 	}
 
+	// calculte indirect lighting
+	vec3 indirect_lighting = vec3(0.0);
+	const int ITERATIONS = 50;
+	for (int i = 0; i < ITERATIONS; i++) {
+		vec2 seed = gl_FragCoord.xy + vec2(float(i)*13.37, float(u_time)*17.29);
+		vec3 indirect_dir = randomHemisphereDirection(n, seed);
+		SDF indirect_lighting_march = ray_march(p + n * 0.01, indirect_dir);
+		if (indirect_lighting_march.hit) {
+			indirect_lighting += get_lighting(indirect_lighting_march, sun_dir) * first_march.color / float(ITERATIONS);
+		}
+	}
+
 	// calculate direct lighting
-	vec3 diffuse_lighting = get_lighting(first_march, sun_dir);
+	vec3 direct_lighting = get_lighting(first_march, sun_dir);
+
 
 	reflective_lighting *= (1.0 - first_march.roughness);
-	diffuse_lighting *= first_march.roughness;
+	direct_lighting *= first_march.roughness;
 
-	return reflective_lighting + diffuse_lighting;
+
+	vec3 color = vec3(0.0);
+	color += indirect_lighting;
+	color += direct_lighting;
+	color += reflective_lighting;
+	return color;
 }
 
 vec3 ray_direction(vec2 uv, vec3 camera_direction) {
@@ -151,7 +231,7 @@ void main() {
 		    gl_FragCoord.x / u_resolution.x * 2.0 - 1.0,
 		    (gl_FragCoord.y / u_resolution.y * 2.0 - 1.0) * (u_resolution.y / u_resolution.x)
 	);	// vec3 camera_position = spherical_coordinates(u_mouse.x * 3.1415, -u_mouse.y * 3.1415, 2.0);
-	vec3 camera_position = spherical_coordinates(-u_time * 0.3, 0.5, 1.5);
+	vec3 camera_position = spherical_coordinates(-u_time * 0.3 + u_camera.x, 0.5 + u_camera.y, u_zoom);
 	
 	vec3 camera_direction = normalize(vec3(0.0) - camera_position);
 	

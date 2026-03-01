@@ -11,8 +11,8 @@ void main() {
 }`;
 
 const shaders = {
-	mandelbrot: 'shaders/mandelbrot.frag',
 	raymarch: 'shaders/raymarch.frag',
+	mandelbrot: 'shaders/mandelbrot.frag',
 };
 
 const dropdown = document.getElementById('shaderSelect');
