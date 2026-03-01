@@ -244,7 +244,7 @@ void main() {
 		    gl_FragCoord.x / u_resolution.x * 2.0 - 1.0,
 		    (gl_FragCoord.y / u_resolution.y * 2.0 - 1.0) * (u_resolution.y / u_resolution.x)
 	);
-    	vec3 camera_position = spherical_coordinates(0.3 + u_camera.x * 3.1415, 0.5 + -u_camera.y * 3.1415, 2.0);
+    	vec3 camera_position = spherical_coordinates(0.3 + u_camera.x * 3.1415, 0.5 + -u_camera.y * 3.1415, u_zoom * 2.0);
 	
 	vec3 camera_direction = normalize(vec3(0.0) - camera_position);
 	
