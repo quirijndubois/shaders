@@ -1,5 +1,5 @@
 #ifdef GL_ES
-precision mediump float;
+precision highp float;
 #endif
 
 uniform vec2 u_resolution;
@@ -8,17 +8,20 @@ uniform float u_time;
 uniform vec2 u_camera;
 uniform float u_zoom;
 
-const int INDIRECT_LIGHTING_ITERATIONS = 20;
+const int INDIRECT_LIGHTING_ITERATIONS = 100;
 const int MAX_RAY_MARCH_ITERATIONS = 100;
 const float MAX_RAY_MARCH_DISTANCE = 10.0;
 const float RAY_MARCH_EPSILON = 0.01;
+
 const float AMBIENT_LIGHTING = 0.3;
+const float SUN_INTENSITY = 1.0;
 
 struct SDF {
 	float distance;
 	vec3 position;
 	bool hit;
 	vec3 color;
+	vec3 emission;
 	float roughness;
 };
 
@@ -81,98 +84,107 @@ float smooth_union(float d1, float d2, float k) {
 SDF scene_sdf(vec3 p) {
 	float d1 = sdf_circle(p - vec3(0.5, 0.25, 0.5), 0.25);
 	float d2 = sdf_circle(p - vec3(-0.5, 0.5, -0.5), 0.5);
-	float d3 = sdf_box(p - vec3(0.3, 0.0, 0.0), vec3(0.4, 0.3, 0.2));
+	float d3 = sdf_box(p - vec3(0.6, 0.0, -0.4), vec3(0.4, 1.0, 0.1));
 	float d4 = sdf_floor(p);
+	float d5 = sdf_circle(p - vec3(-0.4, 0.25, 0.4), 0.25);
 
-	float d = min(d1, d2);
+	float d;
+	d = min(d1, d2);
 	d = min(d, d3);
 	d = min(d, d4);
+	d = min(d, d5);
+
 	SDF result;
 	result.distance = d;
 	result.position = p;
 	result.color = vec3(1.0);
-	if (d3 < d1 && d3 < d2 && d3 < d4) {
-		result.roughness = 0.4;
-	}
-	else if (d2 < d1 && d2 < d3 && d2 < d4) {
-		result.roughness = 0.8;
-		result.color = vec3(0.8, 0.2, 0.2); // Red for second circle
-	}
-	else if (d1 < d2 && d1 < d3 && d1 < d4) {
+
+	if (d == d1) { // blue sphere
 		result.roughness = 1.0;
-		result.color = vec3(0.2, 0.2, 0.8); // Blue for first circle
+		result.color = vec3(0.2, 0.2, 0.8);
 	}
-	else {
+	else if (d == d2) { // red sphere
 		result.roughness = 0.9;
+		result.color = vec3(0.8, 0.2, 0.4);
 	}
+	else if (d == d3) { //cube
+		result.roughness = 0.2;
+		result.color = vec3(1.0);
+	}
+	else if (d == d4){ // floor
+		result.roughness = 1.0;
+		result.color = vec3(0.2);
+	}
+	else if (d == d5){ //emissive sphere
+		result.emission = vec3(1.0, 2.0, 1.0);
+		result.color = vec3(0.2, 2.0, 0.2);
+		result.roughness = 1.0;
+	}
+
 	return result;
 }
 
-// SDF scene_sdf(vec3 p) {
-// 	float circle_d = sdf_circle(p - vec3(0.0, 0.25, 0.0), 0.25);
-// 	float floor_d = sdf_floor(p);
-// 	float d = min(circle_d, floor_d);
-//
-// 	SDF result;
-// 	result.distance = d;
-// 	result.position = p;
-// 	if (floor_d > circle_d){
-// 		result.color = vec3(1.0, 0.0, 0.0);
-// 		result.roughness = 0.9;
-// 	}
-// 	else {
-// 		result.color = vec3(1.0);
-// 		result.roughness = 0.9;
-// 	}
-//
-//
-// 	return result;
-// }
-
-
+float cheap_scene_sdf(vec3 p) {
+	// float d1 = sdf_circle(p - vec3(0.5, 0.25, 0.5), 0.25);
+	// float d2 = sdf_circle(p - vec3(-0.5, 0.5, -0.5), 0.5);
+	// float d3 = sdf_box(p - vec3(0.3, 0.0, 0.0), vec3(0.4, 0.3, 0.2));
+	// float d4 = sdf_floor(p);
+	// float d5 = sdf_circle(p - vec3(-0.4, 0.25, 0.4), 0.25);
+	//
+	// float d;
+	// d = min(d1, d2);
+	// d = min(d, d3);
+	// d = min(d, d4);
+	// d = min(d, d5);
+	// return d;
+	return scene_sdf(p).distance;
+}
 
 vec3 normal(vec3 p) {
 	const float h = 0.001;
 	vec3 n;
-	n.x = scene_sdf(p + vec3(h, 0.0, 0.0)).distance - scene_sdf(p - vec3(h, 0.0, 0.0)).distance;
-	n.y = scene_sdf(p + vec3(0.0, h, 0.0)).distance - scene_sdf(p - vec3(0.0, h, 0.0)).distance;
-	n.z = scene_sdf(p + vec3(0.0, 0.0, h)).distance - scene_sdf(p - vec3(0.0, 0.0, h)).distance;
+	n.x = cheap_scene_sdf(p + vec3(h, 0.0, 0.0)) - cheap_scene_sdf(p - vec3(h, 0.0, 0.0));
+	n.y = cheap_scene_sdf(p + vec3(0.0, h, 0.0)) - cheap_scene_sdf(p - vec3(0.0, h, 0.0));
+	n.z = cheap_scene_sdf(p + vec3(0.0, 0.0, h)) - cheap_scene_sdf(p - vec3(0.0, 0.0, h));
 	return normalize(n);
 }
 
 SDF ray_march(vec3 ro, vec3 rd) {
 	float t = 0.0;
 	SDF sdf_result;
+	vec3 p;
+	float d;
 	for (int i = 0; i < MAX_RAY_MARCH_ITERATIONS; i++) {
-		vec3 p = ro + rd * t;
-		SDF sdf_result = scene_sdf(p);
-		float d = sdf_result.distance;
+		p = ro + rd * t;
+		d = cheap_scene_sdf(p);
 		if (d < RAY_MARCH_EPSILON) {
+			sdf_result = scene_sdf(p);
 			sdf_result.hit = true;
 			return sdf_result;
 			}
 		t += d;
 		if (t > MAX_RAY_MARCH_DISTANCE){
+			sdf_result = scene_sdf(p);
 			sdf_result.hit = false;
 		break;
 		}
 	}
+	sdf_result = scene_sdf(p);
 	sdf_result.hit = false;
 	return sdf_result;
 }
 
-vec3 get_lighting(SDF sdf, vec3 sun_dir) {
+vec3 get_lighting(SDF sdf, vec3 sun_dir, vec3 normal) {
 	vec3 p = sdf.position;
-	vec3 n = normal(p);
-	SDF sun_path = ray_march(p + n * 0.01, sun_dir);
+	SDF sun_path = ray_march(p + normal * 0.01, sun_dir);
 	if (sun_path.hit) return vec3(0.0);
 
-	float light = max(dot(n, sun_dir), 0.0);
+	float light = max(dot(normal, sun_dir), 0.0) * SUN_INTENSITY;
 	return light * sdf.color;
 }
 
-vec3 reflect_dir(vec3 I, vec3 N) {
-	return I - 2.0 * dot(N, I) * N;
+vec3 reflect_dir(vec3 incoming, vec3 normal) {
+	return incoming - 2.0 * dot(normal, incoming) * normal;
 }
 
 vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
@@ -186,7 +198,9 @@ vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
 	vec3 reflected_dir = reflect_dir(rd, n);
 	SDF reflected_march = ray_march(p + n * 0.01, reflected_dir);
 	if (reflected_march.hit) {
-		reflective_lighting = get_lighting(reflected_march, sun_dir);
+		vec3 second_hit_normal = normal(reflected_march.position);
+		reflective_lighting = get_lighting(reflected_march, sun_dir, second_hit_normal);
+		reflective_lighting += reflected_march.emission;
 	}
 	else {
 		reflective_lighting = vec3(AMBIENT_LIGHTING);
@@ -199,7 +213,9 @@ vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
 		vec3 indirect_dir = randomHemisphereDirection(n, seed);
 		SDF indirect_lighting_march = ray_march(p + n * 0.01, indirect_dir);
 		if (indirect_lighting_march.hit) {
-			indirect_lighting += get_lighting(indirect_lighting_march, sun_dir) * first_march.color / float(INDIRECT_LIGHTING_ITERATIONS);
+			vec3 second_hit_normal = normal(indirect_lighting_march.position);
+			indirect_lighting += get_lighting(indirect_lighting_march, sun_dir, second_hit_normal) * first_march.color / float(INDIRECT_LIGHTING_ITERATIONS);
+			indirect_lighting += indirect_lighting_march.emission / float(INDIRECT_LIGHTING_ITERATIONS);
 		}
 		else{
 			indirect_lighting += AMBIENT_LIGHTING / float(INDIRECT_LIGHTING_ITERATIONS) * first_march.color;
@@ -207,11 +223,8 @@ vec3 perform_ray_march(vec3 ro, vec3 rd, vec3 sun_dir) {
 	}
 
 	// calculate direct lighting
-	vec3 direct_lighting = get_lighting(first_march, sun_dir);
-	// if (direct_lighting == vec3(0.0)){
-	// 	direct_lighting = vec3(AMBIENT_LIGHTING);
-	// }
-
+	vec3 direct_lighting = get_lighting(first_march, sun_dir, n);
+	direct_lighting += first_march.emission;
 
 	reflective_lighting *= (1.0 - first_march.roughness);
 	direct_lighting *= first_march.roughness;
